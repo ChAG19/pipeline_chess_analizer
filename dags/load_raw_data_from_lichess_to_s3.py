@@ -1,5 +1,5 @@
 import textwrap, requests, logging
-from pendulum.datetime import DateTime
+from pendulum import DateTime
 from datetime import datetime, timedelta
 
 from airflow.models.dag import DAG
@@ -17,20 +17,20 @@ DAG_ID = "load_raw_data_from_lichess_to_s3"
 # Таблицы
 LAYER = "raw"
 SOURCE = "lichess.com" 
+BUCKET = "prod"
 
 #Minio ключи
-ACCESS_KEY = Variable.get("access_key")
-SECRET_KEY = Variable.get("secret_key")
+MINIO_CONNECTION = "minio_default"
 
 # Описание
 LONG_DESCRIPTION = """
 LONG_DESCRIPTION
 """
 
-SHORT_DESCRIPTION = "SHORT_DESCRIPTION"
+SHORT_DESCRIPTION = "Загрузка данных lichess.com в s3"
 
 # Пользователь для анализа
-USERNAME = Variable.get("username")
+USERNAME = Variable.get("lichess_username")
 args = {
     "owner": OWNER,
     "catchup":True,
@@ -38,29 +38,62 @@ args = {
     "retry_delay": timedelta(minutes=1)
 }
 
+# Основная функция, инициализирует загрузку и передачу данных
 def load_raw_data_from_lichess_to_s3(**context):
-    return
-
-def get_file_from_lichess(**context):
     start, end = get_loading_time(**context)
+    chess_data = get_file_from_lichess(start, end, **context)
+    if chess_data is not None:
+        if len(chess_data) == 0:
+            logging.info("Получен пустой файл.")
+        else:
+            logging.info("Файл содержит данные.")
+            load_data_to_s3(file=chess_data, date=start, **context) # Вызов функции по загурзке данных в s3
+
+# Функция отправляет файл в s3
+def load_data_to_s3(file, date: DateTime, **context):
+
+    hook = S3Hook(aws_conn_id=MINIO_CONNECTION)
+
+    loading_date: DateTime = context["logical_date"]
+    file_name = loading_date.format("DD_MM_YYYY_HH_mm_ss") + ".json"
+    file_path = f"{LAYER}/{SOURCE}/{date.format("DD_MM_YYYY")}/{file_name}"
+
+    logging.info("Начало загрузки файла в s3 хранилище")
+    hook.load_string( 
+            bucket_name=BUCKET,
+            replace=True,
+            string_data=file,
+            key=file_path
+        )
+    logging.info(f"Файл {file_name} загружен\n{file_path}")
+
+# Получение файла с партиями
+# Вход: **context
+# Выход: полученный файл виде строки или None
+def get_file_from_lichess(start: DateTime, end: DateTime, **context):
     logging.info(f"Запущена загрузка данных за {start.date()}")
     
-    response = requests.get(
-        url=f"https://lichess.org/api/games/user/{USERNAME}", 
-        params={'since': start.int_timestamp*1000, "until": end.int_timestamp*1000} # Умножение на 1000 нужно для нужного формата для Lichess
+    try:
+        response = requests.get(
+            url=f"https://lichess.org/api/games/user/{USERNAME}", 
+            params={'since': start.int_timestamp*1000, "until": end.int_timestamp*1000, 'opening':'true'}, # Умножение на 1000 нужно для нужного формата для Lichess
+            headers={'Accept':'application/x-ndjson'}
         )
+    except requests.exceptions.RequestException as e:
+        logging.info("Ошибка соединения")
     
     if response.ok:
-        logging.info("Данные за {start} получены")
+        logging.info(f"Данные за {start.date()} получены.")
         return response.text
-    logging.info("Ошибка соединения. Данные не получены!")
+    
+    logging.info("Ошибка. Данные не получены!")
     return None
 
 # Получение диапозона загрузки
 # Вход: data_interval_end (внутри **context)
 # Выход: начальная и конечная дата
 def get_loading_time(**context) -> tuple[DateTime, DateTime]: 
-    end_timestamp = context["data_interval_end"]
+    end_timestamp: DateTime = context["data_interval_end"]
     end_timestamp = end_timestamp.subtract(days=1)
     start_timestamp = end_timestamp
     end_timestamp = end_timestamp.end_of('day')
@@ -85,9 +118,9 @@ with DAG(
         task_id = "start"
     )
 
-    t2 = BashOperator(
-        task_id="date",
-        bash_command="date",
+    t2 = PythonOperator(
+        task_id="load_raw_data_from_lichess_to_s3",
+        python_callable=load_raw_data_from_lichess_to_s3
     )
     t1.doc_md = textwrap.dedent(
         """\
