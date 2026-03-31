@@ -6,8 +6,6 @@ from airflow.models.dag import DAG
 from airflow.models.variable import Variable
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.providers.amazon.aws.operators.s3 import S3CreateObjectOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 
 # Конфигурация
