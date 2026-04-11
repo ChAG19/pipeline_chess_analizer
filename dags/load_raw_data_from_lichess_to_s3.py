@@ -6,7 +6,8 @@ from airflow.models.dag import DAG
 from airflow.models.variable import Variable
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
-from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+
+from services.MinioLoader import MinioLoader
 
 # Конфигурация
 OWNER = "AG.Chumachenko"
@@ -50,26 +51,21 @@ def load_raw_data_from_lichess_to_s3(**context):
 # Функция отправляет файл в s3
 def load_data_to_s3(file, date: DateTime, **context):
 
-    hook = S3Hook(aws_conn_id=MINIO_CONNECTION)
+    conn = MinioLoader(minio_conn=MINIO_CONNECTION, bucket_name=BUCKET)
 
     loading_date: DateTime = context["logical_date"]
     file_name = loading_date.format("DD_MM_YYYY_HH_mm_ss") + ".json"
     file_path = f"{LAYER}/{SOURCE}/{date.format("DD_MM_YYYY")}/{file_name}"
 
     logging.info("Начало загрузки файла в s3 хранилище")
-    hook.load_string( 
-            bucket_name=BUCKET,
-            replace=True,
-            string_data=file,
-            key=file_path
-        )
+    conn.upload(file=file, file_path=file_path)
     logging.info(f"Файл {file_name} загружен\n{file_path}")
 
 # Получение файла с партиями
 # Вход: **context
 # Выход: полученный файл виде строки или None
 def get_file_from_lichess(start: DateTime, end: DateTime, **context):
-    logging.info(f"Запущена загрузка данных за {start.date()}")
+    logging.info(f"Запущена загрузка данных за {start.date()} из {SOURCE}")
     
     try:
         response = requests.get(
@@ -113,39 +109,33 @@ with DAG(
 
     # t1, t2 and t3 are examples of tasks created by instantiating operators
     t1 = EmptyOperator(
-        task_id = "start"
+        task_id = "Start"
     )
-
+    t1.doc_md = textwrap.dedent(
+        """
+    #### Запуск Dag
+    Запуск дага
+    """
+    )
+    
     t2 = PythonOperator(
         task_id="load_raw_data_from_lichess_to_s3",
         python_callable=load_raw_data_from_lichess_to_s3
     )
-    t1.doc_md = textwrap.dedent(
+    t2.doc_md = textwrap.dedent(
         """\
-    #### Task Documentation
-    You can document your task using the attributes `doc_md` (markdown),
-    `doc` (plain text), `doc_rst`, `doc_json`, `doc_yaml` which gets
-    rendered in the UI's Task Instance Details page.
-    ![img](https://imgs.xkcd.com/comics/fixing_problems.png)
-    **Image Credit:** Randall Munroe, [XKCD](https://xkcd.com/license.html)
-    """
-    )
-
-    dag.doc_md = __doc__  # providing that you have a docstring at the beginning of the DAG; OR
-    dag.doc_md = """
-    This is a documentation placed anywhere
-    """  # otherwise, type it like this
-    templated_command = textwrap.dedent(
-        """
-    {% for i in range(5) %}
-        echo "{{ ds }}"
-        echo "{{ macros.ds_add(ds, 7)}}"
-    {% endfor %}
+    #### Запуск Dag
+    Основной шаг, который скачивает файл из lichess api в Minio хранилище
     """
     )
 
     t3 = EmptyOperator(
         task_id="End",
     )
-
+    t3.doc_md = textwrap.dedent(
+        """
+    #### Запуск Dag
+    Окончание дага
+    """
+    )
     t1 >> t2 >> t3
