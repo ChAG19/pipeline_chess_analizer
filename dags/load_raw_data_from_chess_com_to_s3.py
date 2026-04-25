@@ -102,7 +102,7 @@ with DAG(
     concurrency=1,
     max_active_runs=1,
     max_active_tasks=1, 
-    tags=["raw", "s3", "lichess"],
+    tags=["raw", "s3", "chess.com"],
 ) as dag:
 
     # t1, t2 and t3 are examples of tasks created by instantiating operators
