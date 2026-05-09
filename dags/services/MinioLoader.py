@@ -12,3 +12,16 @@ class MinioLoader:
             string_data=file,
             key=file_path
         )
+
+    def download(self, file_path):
+        file = self.hook.get_key(
+            bucket_name=self.bucket,
+            key=file_path
+        )
+        return file
+    
+    def check_file(self, file_path):
+        return self.hook.check_for_key(file_path, self.bucket)
+    
+    def get_files_list(self):
+        return self.hook.list_keys(self.bucket, prefix="")
