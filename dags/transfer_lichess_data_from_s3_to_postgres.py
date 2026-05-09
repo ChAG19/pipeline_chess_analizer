@@ -6,6 +6,7 @@ from airflow.models.dag import DAG
 from airflow.models.variable import Variable
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
+from airflow.sensors.external_task import ExternalTaskSensor
 
 from services.MinioLoader import MinioLoader
 
@@ -14,9 +15,11 @@ OWNER = "AG.Chumachenko"
 DAG_ID = "transfer_lichess_data_from_s3_to_postgres"
 
 # Таблицы
-LAYER = "ods"
+LAYER_POSTGRES = "ods"
+LAYER_S3 = "raw"
 SOURCE = "lichess.com" 
 BUCKET = "prod"
+
 
 #Minio ключи
 MINIO_CONNECTION = "minio_default"
@@ -44,54 +47,37 @@ def transfer_lichess_data_from_s3_to_postgres(**context):
 
     if file is not None:
         logging.info(f"Файл загружен")
+
     else: 
         logging.info(f"Файл не загружен") 
 
-# Функция отправляет файл в s3
+# Функция возвращает файл из s3
 def get_file_from_s3(**context):
 
     conn = MinioLoader(minio_conn=MINIO_CONNECTION, bucket_name=BUCKET)
     """
     loading_date: DateTime = context["logical_date"]
-    file_name = loading_date.format("DD_MM_YYYY_HH_mm_ss") + ".json"
+    file_name = loading_date.format("DwwD_MM_YYYY_HH_mm_ss") + ".json"
     file_path = f"{LAYER}/{SOURCE}/{year}/{month}/{file_name}"
     """
+    file_path = f"{BUCKET}/{LAYER_S3}/{SOURCE}/{context["data_interval_start"].format("DD_MM_YYYY_HH")}"
 
-    logging.info("Начало загрузки файла в s3 хранилище")
-    file = conn.download(file_path="raw/lichess.com/19_04_2026/19_04_2026_00_00_00.json")
+    logging.info("Начат поиск файла")
+    file_name = get_file_name(conn, file_path)
+    if file_name is not None:
+        logging.info("Найден файл {file_name}")
+        
+        logging.info("Начало загрузки файла в s3 хранилище")
+        file = conn.download(file_path=file_name)
+    else:
+        file = None
+        logging.info("Файл не найден")
     
     return file
 
-    
-# Получение файла с партиями
-# Вход: месяц загрузки(int), год загрузки(int), **context
-# Выход: полученный файл виде строки или None
-def get_file_from_chess_com(month, year, **context):
-    logging.info(f"Запущена загрузка данных за {month} {year}")
-    
-    try:
-        response = requests.get(
-            url=f"https://api.chess.com/pub/player/{USERNAME}/games/{year}/{month}",
-            headers = {
-                "User-Agent": f"pipeline_chess_analizer/0.1.0 (contact: {USERNAME})"
-                } #требование  chess.com
-        )
-    except requests.exceptions.RequestException as e:
-        logging.info("Ошибка соединения")
-    
-    if response.ok:
-        logging.info(f"Данные за {month} {year} получены.")
-        return response.text
-    
-    logging.info("Ошибка. Данные не получены!")
-    return None
-
-# Получение месяца и года загрузки, преобразование месяца в формат mm
-# Вход: data_interval_end (внутри **context)
-# Выход: месяц(str) и год(int)
-def get_loading_time(**context) -> tuple[str, int]: 
-    date: DateTime = context["data_interval_end"]
-    return  f"{date.month:02d}"  , date.year
+def get_file_name(conn: MinioLoader, file_path) -> str:
+    names = conn.get_files_list(file_path)
+    return names[0]
 
 with DAG(
     default_args=args,
@@ -116,26 +102,41 @@ with DAG(
     Запуск дага
     """
     )
-
-    t2 = PythonOperator(
-        task_id="load_raw_data_from_lichess_to_s3",
-        python_callable=transfer_lichess_data_from_s3_to_postgres
+    t2 = ExternalTaskSensor(
+        task_id="wait_for_loading_lichess_data",
+        external_dag_id="load_raw_data_from_lichess_to_s3",
+        execution_delta=timedelta(0),
+        allowed_states=["success"],
+        failed_states=["failed", "skipped"],
+        mode="reschedule",
+        timeout=600
     )
     t2.doc_md = textwrap.dedent(
+        """
+    #### Запуск Dag
+    Ожидание загрузки данных в S3
+    """
+    )
+
+    t3 = PythonOperator(
+        task_id="transfer_lichess_data_from_s3_to_postgres",
+        python_callable=transfer_lichess_data_from_s3_to_postgres
+    )
+    t3.doc_md = textwrap.dedent(
         """\
     #### Запуск Dag
     Основной шаг, который скачивает и обрабатывает lichess файл из Minio хранилища в Postgres
     """
     )
 
-    t3 = EmptyOperator(
+    t4 = EmptyOperator(
         task_id="End",
     )
-    t3.doc_md = textwrap.dedent(
+    t4.doc_md = textwrap.dedent(
         """
     #### Запуск Dag
     Окончание дага
     """
     )
 
-    t1 >> t2 >> t3
+    t1 >> t2 >> t3 >> t4

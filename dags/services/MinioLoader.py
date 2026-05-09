@@ -20,8 +20,10 @@ class MinioLoader:
         )
         return file
     
+    # Проверить существование файла
     def check_file(self, file_path):
         return self.hook.check_for_key(file_path, self.bucket)
     
-    def get_files_list(self):
-        return self.hook.list_keys(self.bucket, prefix="")
+    # Функция для получения списка файлов
+    def get_files_list(self, file_path="") -> str:
+        return self.hook.list_keys(self.bucket, prefix=file_path)
