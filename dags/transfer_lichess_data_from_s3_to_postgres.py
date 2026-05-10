@@ -46,7 +46,7 @@ def transfer_lichess_data_from_s3_to_postgres(**context):
     file = get_file_from_s3(**context)
 
     if file is not None:
-        logging.info(f"Файл загружен")
+        logging.info(f"Файл загружен. Начинается обработка данных")
 
     else: 
         logging.info(f"Файл не загружен") 
@@ -75,9 +75,15 @@ def get_file_from_s3(**context):
     
     return file
 
+# Функция выбора названия файла для загрузки
 def get_file_name(conn: MinioLoader, file_path) -> str:
     names = conn.get_files_list(file_path)
     return names[0]
+
+def transform_data_to_postgres_form():
+    
+
+    return 
 
 with DAG(
     default_args=args,
@@ -92,7 +98,6 @@ with DAG(
     tags=["ods", "s3", "lichess", "psa"],
 ) as dag:
 
-    # t1, t2 and t3 are examples of tasks created by instantiating operators
     t1 = EmptyOperator(
         task_id = "Start"
     )

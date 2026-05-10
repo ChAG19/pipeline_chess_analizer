@@ -9,7 +9,7 @@ RUN echo "[global]" > /etc/pip.conf && \
 
 USER airflow
 
-# Установка через constraints-файл для вашей версии
+# Установка через constraints-файл
 ARG AIRFLOW_VERSION=2.10.5
 ARG PYTHON_VERSION=3.12
 ARG CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
