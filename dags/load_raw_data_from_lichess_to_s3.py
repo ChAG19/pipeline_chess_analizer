@@ -2,11 +2,9 @@ import textwrap, requests, logging
 from pendulum import DateTime
 from datetime import datetime, timedelta
 
-from airflow.models.dag import DAG
 from airflow.models.variable import Variable
-from airflow.operators.empty import EmptyOperator
-from airflow.operators.python import PythonOperator
 from airflow.decorators import dag, task
+from airflow.exceptions import AirflowException
 
 from services.MinioLoader import MinioLoader
 
@@ -56,7 +54,6 @@ def get_loading_time(**context) -> tuple[DateTime, DateTime]:
     description=SHORT_DESCRIPTION,
     schedule="@daily",
     start_date=datetime(2026, 5, 9),
-    catchup=False,
     concurrency=1,
     max_active_runs=1,
     max_active_tasks=1, 
@@ -80,13 +77,14 @@ def load_raw_data_from_lichess_to_s3():
                 headers={'Accept':'application/x-ndjson'}
             )
         except requests.exceptions.RequestException as e:
-            logging.info("Ошибка соединения")
+            raise AirflowException("Ошибка соединения")
         
         logging.info(f"Данные за {start.date()} получены.")
         return response.text
         
-    
-    @task.run_if(lambda chess_data: len(chess_data) != 0)
+    #Если значение не None, не пустая строка, не 0, не пустой список и т.д. — задача выполняется
+    @task.run_if(lambda context: context["task_instance"].xcom_pull(task_ids='get_file_from_lichess'), 
+                 skip_message="Данных за этот день нет, загрузка пропущена")
     
     @task()
     # Функция отправляет файл в s3
