@@ -14,7 +14,7 @@ class MinioLoader:
         )
 
     def download(self, file_path):
-        file = self.hook.get_key(
+        file = self.hook.read_key(
             bucket_name=self.bucket,
             key=file_path
         )

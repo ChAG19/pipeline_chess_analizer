@@ -95,7 +95,7 @@ def transfer_lichess_data_from_s3_to_postgres():
     
     
     @task.run_if(lambda context: context["task_instance"].xcom_pull(task_ids='get_file_from_s3'), 
-                 skip_message="Данных за этот месяц нет, загрузка пропущена")
+                 skip_message="Данных за этот день нет, загрузка пропущена")
 
     @task
     def load_s3_data_to_postgres(file, **context):
