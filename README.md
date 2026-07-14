@@ -64,7 +64,8 @@
 - Для редактирования нужно в виртуальное окружение загрузить:
     Airflow=2.10.5 (или более позднюю версию 2.11.*)
     apache-airflow-providers-amazon==9.2.0
-    apache-airflow-providers-postgres>=5.13.1  
+    apache-airflow-providers-postgres>=5.13.1
+    pandas==3.0.2  
 - Поднять контейнеры с docker-compose
 
     Полезнае команды
