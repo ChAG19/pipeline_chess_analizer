@@ -29,18 +29,17 @@ class PostgresLoader:
                 file_data = FileDataTransformFunctions().transform(func_name=m['transform'], data=file_data, column=m['db_column'])
 
         engine = self.hook.get_sqlalchemy_engine()       
-        try:
-            file_data.to_sql(
-                name=target,
-                con=engine,
-                schema=schema,
-                if_exists='append',
-                index_label=None,
-                chunksize=batch_size,
-                method='multi'
-            )
-        except Exception as e:
-            raise TypeError("Возникла ошибка при преобразовании типов данных")
+
+        file_data.to_sql(
+            name=target,
+            con=engine,
+            schema=schema,
+            if_exists='append',
+            index=False,
+            chunksize=batch_size,
+            method='multi'
+        )
+        
         
         
 
